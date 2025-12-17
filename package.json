@@ -1,0 +1,25 @@
+{
+  "name": "@vault/protocol-sdk",
+  "version": "1.0.0",
+  "description": "TypeScript SDK for Vault Protocol - Shared library for all Vault Protocol applications",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts",
+    "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": ["vault", "protocol", "web3", "blockchain", "sdk"],
+  "license": "MIT",
+  "dependencies": {
+    "viem": "^2.9.0",
+    "wagmi": "2.19.2",
+    "@wagmi/core": "2.17.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.4.0"
+  }
+}
