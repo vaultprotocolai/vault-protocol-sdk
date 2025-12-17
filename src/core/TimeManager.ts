@@ -58,4 +58,19 @@ export class TimeManager {
     // Implementation will check last check-in time
     throw new Error('Not implemented - connect to Vault Protocol smart contracts');
   }
+
+  /**
+   * Set unlock time for vault (alias for configureScheduledRelease)
+   */
+  async setUnlockTime(vaultId: string, time: number): Promise<void> {
+    return this.configureScheduledRelease(vaultId, time);
+  }
+
+  /**
+   * Get last check-in timestamp
+   */
+  async getLastCheckIn(vaultId: string): Promise<number> {
+    // Implementation will return last check-in timestamp
+    throw new Error('Not implemented - connect to Vault Protocol smart contracts');
+  }
 }
