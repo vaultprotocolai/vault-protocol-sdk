@@ -32,6 +32,8 @@ export interface TimeManagerConfig {
   unlockTime?: number;
   checkInPeriod?: number;
   gracePeriod?: number;
+  scheduledTime?: number;
+  deadmanDuration?: number;
 }
 
 export interface AttestationProof {

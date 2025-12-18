@@ -27,40 +27,103 @@ pnpm add @vault/protocol-sdk
 
 ```typescript
 import {
+  createVaultClient,
   VaultManager,
   TimeManager,
-  AIVaultManager,
   ReleaseType
 } from '@vault/protocol-sdk';
 
-// Initialize the SDK
-const vaultManager = new VaultManager(
-  'https://api.vaultprotocol.ai',
-  '0x...' // Contract address
-);
+// Option 1: Backend/Scripts - Private key mode
+const client = createVaultClient({
+  chainId: 97,  // BSC Testnet
+  privateKey: '0x...'
+});
+
+// Option 2: Frontend - External wallet mode (MetaMask, WalletConnect)
+const client = createVaultClient({
+  chainId: 97,
+  walletClient: existingWalletClient,
+  account: '0x...'
+});
+
+// Option 3: Read-only mode
+const client = createReadOnlyClient(97);
+
+// Initialize managers with the client
+const vaultManager = new VaultManager(client);
+const timeManager = new TimeManager(client);
 
 // Create a vault
 const vault = await vaultManager.createVault({
   releaseType: ReleaseType.DEADMAN,
-  checkInPeriod: 30 * 24 * 60 * 60, // 30 days
   recipients: ['0x...'],
-  encrypted: true,
-  aiMonitored: true
+  contentCID: 'QmYourContent...',
+  config: {
+    checkInPeriod: 30 * 24 * 60 * 60, // 30 days
+  }
 });
 
-// Upload content
-await vaultManager.uploadContent(vault.id, {
-  data: 'encrypted-content',
-  encrypted: true,
-  storageLocation: 'arweave',
-  contentType: 'application/json',
-  size: 1024
-});
+// Check in to reset dead-man timer
+await timeManager.checkIn(vault.id);
+```
+
+## Deployed Contracts
+
+| Chain | Chain ID | Status | VaultManager | VaultTimeManager |
+|-------|----------|--------|--------------|------------------|
+| BSC Testnet | 97 | Active | `0x116865F62E1714D9B512Fd9E4f35e6fDb53D019C` | `0x68e41639B0c5C56F6E6b0f0Cf9612acac089ff4D` |
+| opBNB Mainnet | 204 | Pending | - | - |
+| opBNB Testnet | 5611 | Pending | - | - |
+
+## Client Factory
+
+The SDK uses a client factory pattern that supports three wallet modes:
+
+### Private Key Mode (Backend/Scripts)
+
+```typescript
+import { createPrivateKeyClient, VaultManager } from '@vault/protocol-sdk';
+
+const client = createPrivateKeyClient(
+  97,           // Chain ID
+  '0x...',      // Private key
+  'https://custom-rpc.example.com'  // Optional custom RPC
+);
+
+const vaultManager = new VaultManager(client);
+```
+
+### External Wallet Mode (Frontend)
+
+```typescript
+import { createWalletClientWrapper, VaultManager } from '@vault/protocol-sdk';
+
+// Use with MetaMask, WalletConnect, etc.
+const client = createWalletClientWrapper(
+  97,               // Chain ID
+  walletClient,     // viem WalletClient from your wallet provider
+  '0x...'           // Account address
+);
+
+const vaultManager = new VaultManager(client);
+```
+
+### Read-Only Mode
+
+```typescript
+import { createReadOnlyClient, VaultManager } from '@vault/protocol-sdk';
+
+// For querying without signing capability
+const client = createReadOnlyClient(97);
+
+const vaultManager = new VaultManager(client);
+const vaults = await vaultManager.getVaultsByOwner('0x...');
 ```
 
 ## Vault Types
 
 ### Scheduled Vault
+
 Unlocks at a specific date/time.
 
 ```typescript
@@ -68,37 +131,46 @@ import { VaultManager, ReleaseType } from '@vault/protocol-sdk';
 
 const vault = await vaultManager.createVault({
   releaseType: ReleaseType.SCHEDULED,
-  unlockTime: Date.now() + 365 * 24 * 60 * 60 * 1000, // 1 year
-  recipients: ['0x...']
+  recipients: ['0x...'],
+  contentCID: 'QmContent...',
+  config: {
+    unlockTime: Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60  // 1 year
+  }
 });
 ```
 
 ### Dead-Man Switch Vault
+
 Requires periodic check-ins to prevent automatic release.
 
 ```typescript
-import { VaultManager, TimeManager, ReleaseType } from '@vault/protocol-sdk';
-
 const vault = await vaultManager.createVault({
   releaseType: ReleaseType.DEADMAN,
-  checkInPeriod: 30 * 24 * 60 * 60, // 30 days in seconds
-  recipients: ['0x...']
+  recipients: ['0x...'],
+  contentCID: 'QmContent...',
+  config: {
+    checkInPeriod: 30 * 24 * 60 * 60  // 30 days in seconds
+  }
 });
 
-// Check in to reset the timer
-const timeManager = new TimeManager('0x...');
-await timeManager.checkIn(vault.id);
+// Check in periodically to reset the timer
+const timeManager = new TimeManager(client);
+await timeManager.checkIn(vault.address);
 ```
 
 ### Hybrid Vault
+
 Combines scheduled release with dead-man switch.
 
 ```typescript
 const vault = await vaultManager.createVault({
   releaseType: ReleaseType.HYBRID,
-  unlockTime: Date.now() + 365 * 24 * 60 * 60 * 1000,
-  checkInPeriod: 30 * 24 * 60 * 60,
-  recipients: ['0x...']
+  recipients: ['0x...'],
+  contentCID: 'QmContent...',
+  config: {
+    unlockTime: Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60,
+    checkInPeriod: 30 * 24 * 60 * 60
+  }
 });
 ```
 
@@ -109,23 +181,68 @@ Enable AI-powered monitoring for liveness detection and risk assessment.
 ```typescript
 import { AIVaultManager } from '@vault/protocol-sdk';
 
-const aiManager = new AIVaultManager('0x...');
+const aiManager = new AIVaultManager(client);
 
-// Enable monitoring
-await aiManager.enableMonitoring(vault.id, {
-  enabled: true,
-  livenessThreshold: 50,
-  riskThreshold: 70,
-  agents: ['agent1', 'agent2', 'agent3'],
-  consensusRequired: 2
-});
+// Enable monitoring for a vault
+await aiManager.enableMonitoring(vaultAddress);
 
-// Get scores
-const livenessScore = await aiManager.getLivenessScore(vault.id);
-const riskScore = await aiManager.getRiskScore(vault.id);
+// Get liveness score (0-100)
+const livenessScore = await aiManager.getLivenessScore(vaultAddress);
+
+// Get risk score (0-100)
+const riskScore = await aiManager.getRiskScore(vaultAddress);
 
 // Get AI recommendations
-const recommendations = await aiManager.getRecommendations(vault.id);
+const recommendations = await aiManager.getRecommendations(vaultAddress);
+console.log(recommendations);
+// ['Enable AI verification for enhanced security monitoring', ...]
+
+// Check if AI would prevent release
+const { shouldPrevent, reason } = await aiManager.shouldPreventRelease(vaultAddress);
+
+// Get full AI state
+const state = await aiManager.getVaultAIState(vaultAddress);
+console.log(state);
+// {
+//   livenessScore: 85,
+//   riskScore: 15,
+//   lastAIPrediction: 1702345678,
+//   aiCheckCount: 42,
+//   aiVerificationEnabled: true,
+//   isPausedByAI: false,
+//   lastAIReason: ''
+// }
+```
+
+## Attestation Network
+
+Decentralized attestation with Byzantine Fault Tolerance (5-of-7 consensus).
+
+```typescript
+import { AttestationClient, AttestationType } from '@vault/protocol-sdk';
+
+const attestation = new AttestationClient(client);
+
+// Submit an attestation request
+const requestId = await attestation.submitAttestation({
+  type: AttestationType.DEATH_VERIFICATION,
+  data: vaultAddress,
+  consensus: 5,  // 5-of-7 BFT
+  expirationTime: Math.floor(Date.now() / 1000) + 86400  // 24 hours
+});
+
+// Verify attestation result
+const result = await attestation.verifyAttestation(requestId);
+console.log(result);  // { reached: true, result: true }
+
+// Get attestation status
+const status = await attestation.getAttestationStatus(requestId);
+
+// Get attestation responses from oracles
+const responses = await attestation.getAttestationResponses(requestId);
+
+// Register as an oracle agent (requires staking)
+await attestation.registerAgent(BigInt('100000000000000000000000'));  // 100,000 VAULT tokens
 ```
 
 ## Cross-Chain Support
@@ -135,23 +252,26 @@ Sync vaults across multiple chains via LayerZero.
 ```typescript
 import { CrossChainClient } from '@vault/protocol-sdk';
 
-const crossChain = new CrossChainClient('0x...');
+const crossChain = new CrossChainClient(client);
 
 // Check supported chains
-crossChain.isSupportedChain(137); // true (Polygon)
-crossChain.isSupportedChain(204); // true (opBNB Mainnet)
+console.log(crossChain.isSupportedChain(137));  // true (Polygon)
+console.log(crossChain.isSupportedChain(204));  // true (opBNB Mainnet)
 
 // Sync vault to another chain
-await crossChain.syncVault(vault.id, 137); // Sync to Polygon
+await crossChain.syncVault(vaultAddress, 137);  // Sync to Polygon
 
 // Send cross-chain message
 await crossChain.sendMessage({
   sourceChain: 204,
   destChain: 137,
-  vaultId: vault.id,
+  vaultId: vaultAddress,
   operation: 'sync',
   data: {}
 });
+
+// Check message status
+const status = await crossChain.getMessageStatus(messageId);
 ```
 
 ## Encryption
@@ -176,100 +296,68 @@ const { encrypted, iv } = await encryptData('sensitive data', key);
 // Decrypt data
 const decrypted = await decryptData(encrypted, key, iv);
 
-// Export key for storage
+// Export key for storage (base64)
 const exportedKey = await exportKey(key);
 
 // Import key from storage
 const importedKey = await importKey(exportedKey);
 ```
 
-## FHE (Fully Homomorphic Encryption)
-
-Advanced privacy with FHE support.
+## Decentralized Storage
 
 ```typescript
-import { FHEVault } from '@vault/protocol-sdk';
+import { StorageClient } from '@vault/protocol-sdk';
 
-const fheVault = new FHEVault('0x...');
+const storage = new StorageClient({
+  ipfsApiKey: process.env.PINATA_API_KEY,
+  ipfsApiSecret: process.env.PINATA_API_SECRET,
+  arweaveKey: process.env.ARWEAVE_KEY,
+  ceramicNodeUrl: 'https://ceramic-clay.3boxlabs.com'
+});
 
-// Encrypt with FHE
-const ciphertext = await fheVault.encrypt(vault.id, 'data');
+// Upload to IPFS (via Pinata)
+const ipfsResult = await storage.uploadToIPFS(data, {
+  name: 'vault-content',
+  pinataMetadata: { vaultId: '123' }
+});
+console.log(ipfsResult);
+// { provider: 'ipfs', cid: 'Qm...', url: 'https://gateway.pinata.cloud/ipfs/Qm...', size: 1024 }
 
-// Compute on encrypted data
-const result = await fheVault.compute(vault.id, 'operation', params);
+// Upload to Arweave
+const arweaveResult = await storage.uploadToArweave(data, {
+  tags: [{ name: 'Content-Type', value: 'application/json' }]
+});
 
-// Decrypt result
-const decrypted = await fheVault.decrypt(vault.id, result);
+// Upload to Ceramic
+const ceramicResult = await storage.uploadToCeramic(data, schema);
+
+// Retrieve from any provider
+const content = await storage.retrieveFromIPFS(cid);
+const arContent = await storage.retrieveFromArweave(transactionId);
 ```
 
 ## Event Monitoring
 
-Subscribe to real-time vault events via WebSocket.
+Subscribe to real-time vault events.
 
 ```typescript
-import { EventMonitor } from '@vault/protocol-sdk';
+import { EventMonitor, createVaultClient } from '@vault/protocol-sdk';
 
-const monitor = new EventMonitor('wss://events.vaultprotocol.ai');
+const client = createReadOnlyClient(97);
+const monitor = new EventMonitor(client);
 
-// Connect to event stream
-await monitor.connect();
-
-// Subscribe to specific vault events
-const unsubscribe = monitor.subscribe(vault.id, (event) => {
-  console.log('Vault event:', event.type, event.data);
+// Subscribe to vault events
+const unsubscribe = await monitor.subscribe(vaultAddress, (event) => {
+  console.log('Event:', event.type, event.data);
 });
 
-// Subscribe to all events
-monitor.subscribeAll((event) => {
+// Subscribe to all events from a contract
+const unsubscribeAll = await monitor.subscribeAll((event) => {
   console.log('Global event:', event);
 });
 
 // Cleanup
 unsubscribe();
-monitor.disconnect();
-```
-
-## Storage
-
-Decentralized storage integration.
-
-```typescript
-import { StorageClient } from '@vault/protocol-sdk';
-
-const storage = new StorageClient();
-
-// Upload to Arweave
-const arweaveId = await storage.uploadToArweave(data);
-
-// Upload to IPFS
-const ipfsHash = await storage.uploadToIPFS(data);
-
-// Upload to Ceramic
-const ceramicId = await storage.uploadToCeramic(data);
-
-// Retrieve content
-const content = await storage.retrieve(storageId, 'arweave');
-```
-
-## Attestation
-
-ZK attestation for vault conditions.
-
-```typescript
-import { AttestationClient } from '@vault/protocol-sdk';
-
-const attestation = new AttestationClient('0x...');
-
-// Create attestation proof
-const proof = await attestation.createAttestation(vault.id, {
-  condition: 'owner_inactive',
-  proof: '0x...',
-  timestamp: Date.now(),
-  agentSignatures: ['0x...', '0x...']
-});
-
-// Verify attestation
-const isValid = await attestation.verifyAttestation(proof);
 ```
 
 ## Supported Chains
@@ -278,13 +366,14 @@ const isValid = await attestation.verifyAttestation(proof);
 |-------|----------|--------|
 | opBNB (Primary) | 204 | Mainnet |
 | opBNB Testnet | 5611 | Testnet |
+| BSC Testnet | 97 | Active (Testing) |
 | Ethereum | 1 | Supported |
 | Polygon | 137 | Supported |
 | Arbitrum | 42161 | Supported |
-| Optimism | 10 | Supported |
-| Base | 8453 | Supported |
-| BSC | 56 | Supported |
-| Avalanche | 43114 | Supported |
+| Optimism | 10 | Planned |
+| Base | 8453 | Planned |
+| BSC | 56 | Planned |
+| Avalanche | 43114 | Planned |
 
 ## TypeScript Types
 
@@ -297,68 +386,85 @@ import type {
   AttestationProof,
   CrossChainMessage,
   AIMonitoringConfig,
-  VaultEvent
+  VaultEvent,
+  VaultClient,
+  VaultClientConfig
 } from '@vault/protocol-sdk';
 ```
 
 ## API Reference
 
+### Client Factory
+- `createVaultClient(config)` - Create client with full configuration
+- `createReadOnlyClient(chainId, rpcUrl?)` - Create read-only client
+- `createPrivateKeyClient(chainId, privateKey, rpcUrl?)` - Create client with private key
+- `createWalletClientWrapper(chainId, walletClient, account, rpcUrl?)` - Create client with external wallet
+- `canWrite(client)` - Check if client can sign transactions
+- `getAccountOrThrow(client)` - Get account address or throw
+
 ### VaultManager
 - `createVault(config)` - Create a new vault
-- `getVault(vaultId)` - Get vault by ID
-- `updateVault(vaultId, updates)` - Update vault configuration
-- `uploadContent(vaultId, content)` - Upload content to vault
-- `isUnlocked(vaultId)` - Check if vault is unlocked
-- `unlockVault(vaultId)` - Unlock vault (if conditions met)
+- `getVault(vaultAddress)` - Get vault by address
+- `updateVault(vaultAddress, contentCID)` - Update vault content
+- `uploadContent(vaultAddress, content)` - Upload content to vault
+- `isUnlocked(vaultAddress)` - Check if vault is unlocked
+- `unlockVault(vaultAddress)` - Unlock vault (if conditions met)
 - `getVaultsByOwner(owner)` - Get all vaults for an owner
 
 ### TimeManager
-- `setUnlockTime(vaultId, time)` - Set scheduled unlock time
-- `checkIn(vaultId)` - Check in to reset dead-man timer
-- `getTimeUntilUnlock(vaultId)` - Get time remaining until unlock
-- `getLastCheckIn(vaultId)` - Get last check-in timestamp
+- `configureScheduledRelease(vaultAddress, unlockTime)` - Set scheduled unlock
+- `configureDeadmanSwitch(vaultAddress, checkInPeriod)` - Set dead-man switch
+- `configureHybridRelease(vaultAddress, unlockTime, checkInPeriod)` - Set hybrid mode
+- `checkIn(vaultAddress)` - Check in to reset dead-man timer
+- `getTimeUntilUnlock(vaultAddress)` - Get time remaining
+- `isDeadmanTriggered(vaultAddress)` - Check if dead-man triggered
+- `setUnlockTime(vaultAddress, time)` - Set unlock time
+- `getLastCheckIn(vaultAddress)` - Get last check-in timestamp
 
 ### AIVaultManager
-- `enableMonitoring(vaultId, config)` - Enable AI monitoring
-- `getLivenessScore(vaultId)` - Get liveness score (0-100)
-- `getRiskScore(vaultId)` - Get risk score (0-100)
-- `predictUnlockTime(vaultId)` - Predict unlock time
-- `getRecommendations(vaultId)` - Get AI recommendations
+- `enableMonitoring(vaultAddress, config?)` - Enable AI monitoring
+- `disableMonitoring(vaultAddress)` - Disable AI monitoring
+- `getLivenessScore(vaultAddress)` - Get liveness score (0-100)
+- `getRiskScore(vaultAddress)` - Get risk score (0-100)
+- `getVaultAIState(vaultAddress)` - Get full AI state
+- `predictUnlockTime(vaultAddress)` - Predict unlock time
+- `getRecommendations(vaultAddress)` - Get AI recommendations
+- `shouldPreventRelease(vaultAddress)` - Check if AI would prevent release
+- `shouldReleaseVault(vaultAddress)` - Check if vault can be released
+- `resumeVault(vaultAddress)` - Resume AI-paused vault
+
+### AttestationClient
+- `submitAttestation(params)` - Submit attestation request
+- `verifyAttestation(requestId)` - Verify attestation result
+- `getAttestationStatus(requestId)` - Get request status
+- `getAttestationResponses(requestId)` - Get oracle responses
+- `registerAgent(stakeAmount)` - Register as oracle agent
+- `deregisterAgent()` - Deregister as oracle agent
+- `getOracleNode(address)` - Get oracle node info
+- `getActiveOracles()` - Get active oracle addresses
+- `provideAttestation(requestId, result, proof, signature)` - Submit oracle response
 
 ### CrossChainClient
 - `sendMessage(message)` - Send cross-chain message
 - `getMessageStatus(messageId)` - Get message status
-- `syncVault(vaultId, targetChain)` - Sync vault across chains
+- `syncVault(vaultAddress, targetChain)` - Sync vault across chains
 - `isSupportedChain(chainId)` - Check if chain is supported
-
-### FHEVault
-- `encrypt(vaultId, data)` - Encrypt data with FHE
-- `decrypt(vaultId, ciphertext)` - Decrypt FHE ciphertext
-- `compute(vaultId, operation, params)` - Compute on encrypted data
-
-### AttestationClient
-- `createAttestation(vaultId, proof)` - Create attestation proof
-- `verifyAttestation(proof)` - Verify attestation
-- `getAttestations(vaultId)` - Get all attestations for vault
-
-### EventMonitor
-- `connect()` - Connect to WebSocket event stream
-- `disconnect()` - Disconnect from event stream
-- `subscribe(vaultId, callback)` - Subscribe to vault events
-- `subscribeAll(callback)` - Subscribe to all events
+- `getSupportedChains()` - Get list of supported chains
 
 ### StorageClient
-- `uploadToArweave(data)` - Upload to Arweave
-- `uploadToIPFS(data)` - Upload to IPFS
-- `uploadToCeramic(data)` - Upload to Ceramic
-- `retrieve(id, provider)` - Retrieve stored content
+- `uploadToIPFS(data, options?)` - Upload to IPFS via Pinata
+- `uploadToArweave(data, options?)` - Upload to Arweave
+- `uploadToCeramic(data, schema)` - Upload to Ceramic
+- `retrieveFromIPFS(cid)` - Retrieve from IPFS
+- `retrieveFromArweave(txId)` - Retrieve from Arweave
+- `retrieveFromCeramic(streamId)` - Retrieve from Ceramic
 
 ### Encryption Utilities
 - `generateEncryptionKey()` - Generate AES-256-GCM key
 - `encryptData(data, key)` - Encrypt data
 - `decryptData(encrypted, key, iv)` - Decrypt data
-- `exportKey(key)` - Export key to string
-- `importKey(keyData)` - Import key from string
+- `exportKey(key)` - Export key to base64
+- `importKey(keyData)` - Import key from base64
 
 ## License
 
