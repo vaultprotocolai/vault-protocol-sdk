@@ -1,17 +1,38 @@
 {
   "name": "@vault/protocol-sdk",
   "version": "1.0.0",
-  "description": "TypeScript SDK for Vault Protocol - Shared library for all Vault Protocol applications",
+  "description": "TypeScript SDK for Vault Protocol - AI-monitored vault infrastructure for Web3",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsup src/index.ts --format cjs,esm --dts",
     "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
   },
-  "keywords": ["vault", "protocol", "web3", "blockchain", "sdk"],
+  "keywords": ["vault", "protocol", "web3", "blockchain", "sdk", "ethereum", "crypto", "dead-man-switch", "time-lock"],
+  "author": "Vault Protocol <dev@vaultprotocol.ai>",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vaultprotocolai/vault-protocol-sdk.git"
+  },
+  "homepage": "https://vaultprotocol.ai",
+  "bugs": {
+    "url": "https://github.com/vaultprotocolai/vault-protocol-sdk/issues"
+  },
   "dependencies": {
     "viem": "^2.9.0",
     "wagmi": "2.19.2",
@@ -21,5 +42,8 @@
     "@types/node": "^20.0.0",
     "tsup": "^8.0.0",
     "typescript": "^5.4.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
