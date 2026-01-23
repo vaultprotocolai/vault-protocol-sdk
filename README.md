@@ -1,6 +1,6 @@
-# Vault Protocol SDK
+# AfterCrypt SDK
 
-TypeScript SDK for building applications on Vault Protocol - the permissionless, AI-monitored vault infrastructure for Web3.
+TypeScript SDK for building applications on AfterCrypt Protocol - the permissionless, AI-monitored vault infrastructure for Web3.
 
 ## Installation
 
